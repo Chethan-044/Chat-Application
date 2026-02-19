@@ -2,6 +2,10 @@ import User from "../models/User.js";
 import bcrypt from "bcryptjs"
 import { generateToken } from "../lib/utils.js";
 import { sendWelcomeEmail } from "../emails/emailHandlers.js";
+import streamifier from "streamifier";
+import cloudinary from "../lib/cloudinary.js";
+
+
 import dotenv from "dotenv"
 dotenv.config()
 
@@ -71,6 +75,10 @@ export const signup = async (req,res)=>{
 export const login = async(req,res)=>{
     const { email,password} = req.body
 
+    if(!email || password){
+        return res.status(400).json({message:"All fields are required"})
+    }
+
     try{
         const user = await User.findOne({email})
         if(!user){
@@ -100,3 +108,45 @@ export const logout = (req,res)=>{
     res.cookie("jwt","",{maxAge:0})
     res.status(200).json({message:"Logged out successfully"})
 }
+
+export const updateProfile = async (req, res) => {
+  try {
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Profile picture is required"
+      });
+    }
+
+    const userId = req.user._id;
+
+    const streamUpload = () => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "profile_pics" },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        );
+
+        streamifier.createReadStream(req.file.buffer).pipe(stream);
+      });
+    };
+
+    const result = await streamUpload();
+
+    await User.findByIdAndUpdate(userId, {
+      profilePic: result.secure_url
+    });
+
+    res.status(200).json({
+      message: "Profile picture updated successfully",
+      profilePic: result.secure_url
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Upload failed" });
+  }
+};
