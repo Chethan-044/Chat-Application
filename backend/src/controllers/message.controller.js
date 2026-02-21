@@ -1,6 +1,8 @@
 import express from "express";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
+import cloudinary from "../lib/cloudinary.js";
+
 
 export const getAllContacts = async (req, res) => {
   try {
@@ -39,25 +41,27 @@ export const getmessagesByUserId = async (req, res) => {
 
 export const sendmessage = async (req, res) => {
   try {
-    const { text, image } = req.body;
+    const { text } = req.body;
+    const imageFile = req.file;
 
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
-    if(!text && !image){
-        return res.status(400).json({message:"Message cannot be empty"})
+    if (senderId.equals(receiverId)) {
+      return res.status(400).json({ message: "You cannot send message to yourself" });
     }
-    if(senderId.equals(receiverId)){
-        return res.status(400).json({message:"You cannot send message to yourself"})
-    }
-    const recieverExists = await User.exists({ _id: receiverId });
-    if (!recieverExists) {
+
+    const receiverExists = await User.exists({ _id: receiverId });
+    if (!receiverExists) {
       return res.status(404).json({ message: "Receiver not found" });
     }
 
     let imageURL;
-    if (image) {
-      const uploadResponse = await cloudinary.uploader.upload(image);
+
+    if (imageFile) {
+      const base64 = `data:${imageFile.mimetype};base64,${imageFile.buffer.toString("base64")}`;
+
+      const uploadResponse = await cloudinary.uploader.upload(base64);
       imageURL = uploadResponse.secure_url;
     }
 
@@ -67,13 +71,16 @@ export const sendmessage = async (req, res) => {
       text,
       image: imageURL,
     });
+
     await newMessage.save();
     res.status(201).json(newMessage);
+
   } catch (error) {
-    console.log("error in sending message : ", error.message);
+    console.log("error in sending message:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 export const getChatPartners = async (req, res) => {
   try {
